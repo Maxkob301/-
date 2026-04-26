@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/item_model.dart';
+import '../models/request_model.dart';
 
 class FirebaseService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -48,8 +49,8 @@ class FirebaseService {
   }
 
   Future<QuerySnapshot<Map<String, dynamic>>> getMoreItems(
-  DocumentSnapshot<Map<String, dynamic>> lastDoc,
-  int limit,
+    DocumentSnapshot<Map<String, dynamic>> lastDoc,
+    int limit,
   ) async {
     return _firestore
         .collection('items')
@@ -61,7 +62,6 @@ class FirebaseService {
   }
 
   Future<void> addItem(LostFoundItem item, String userId) async {
-    
     final docRef = await _firestore.collection('items').add({
       'title': item.title,
       'description': item.description,
@@ -75,8 +75,12 @@ class FirebaseService {
       'authorEmail': item.authorEmail,
       'category': item.category,
       'district': item.district,
-      
-});
+      'acceptedHelperId':'',
+      'isLocationHidden': item.isLocationHidden,
+      'latitude': item.latitude,
+      'longitude': item.longitude,
+      'addressText': item.addressText,
+    });
 
     await _firestore.collection('notifications').add({
       'message': 'Новое объявление: ${item.title}',
@@ -140,10 +144,7 @@ class FirebaseService {
         .get();
 
     return snapshot.docs
-        .map((doc) => LostFoundItem.fromMap(
-              doc.id,
-              doc.data(),
-            ))
+        .map((doc) => LostFoundItem.fromMap(doc.id, doc.data()))
         .toList();
   }
 
@@ -156,50 +157,131 @@ class FirebaseService {
 
     return snapshot.docs
         .where((doc) => favoriteIds.contains(doc.id))
-        .map((doc) => LostFoundItem.fromMap(
-              doc.id,
-              doc.data(),
-            ))
+        .map((doc) => LostFoundItem.fromMap(doc.id, doc.data()))
         .toList();
   }
 
   Future<void> ensureUserDocument(User user) async {
-  final docRef = _firestore.collection('users').doc(user.uid);
-  final doc = await docRef.get();
+    final docRef = _firestore.collection('users').doc(user.uid);
+    final doc = await docRef.get();
 
-  if (!doc.exists) {
-    await docRef.set({
-      'email': user.email ?? '',
-      'role': user.email == 'admin@test.com' ? 'admin' : 'user',
-      'favorites': <String>[],
-      'createdAt': FieldValue.serverTimestamp(),
-    });
-  }
-}
-
-Future<void> resolveItem(String docId) async {
-  await _firestore.collection('items').doc(docId).update({
-    'status': 'resolved',
-  });
-
-  await cleanupResolvedItems();
-}
-
-Future<void> cleanupResolvedItems() async {
-  final snapshot = await _firestore
-      .collection('items')
-      .where('status', isEqualTo: 'resolved')
-      .orderBy('createdAt', descending: false)
-      .get();
-
-  if (snapshot.docs.length > 5) {
-    final docsToArchive = snapshot.docs.take(snapshot.docs.length - 5);
-
-    for (final doc in docsToArchive) {
-      await _firestore.collection('items').doc(doc.id).update({
-        'status': 'deleted',
+    if (!doc.exists) {
+      await docRef.set({
+        'email': user.email ?? '',
+        'role': user.email == 'admin@test.com' ? 'admin' : 'user',
+        'favorites': <String>[],
+        'createdAt': FieldValue.serverTimestamp(),
       });
     }
   }
-}
+
+  Future<void> resolveItem(String docId) async {
+    await _firestore.collection('items').doc(docId).update({
+      'status': 'resolved',
+    });
+
+    await cleanupResolvedItems();
+  }
+
+  Future<void> cleanupResolvedItems() async {
+    final snapshot = await _firestore
+        .collection('items')
+        .where('status', isEqualTo: 'resolved')
+        .orderBy('createdAt', descending: false)
+        .get();
+
+    if (snapshot.docs.length > 5) {
+      final docsToArchive = snapshot.docs.take(snapshot.docs.length - 5);
+
+      for (final doc in docsToArchive) {
+        await _firestore.collection('items').doc(doc.id).update({
+          'status': 'deleted',
+        });
+      }
+    }
+  }
+
+  Future<void> createRequest({
+    required String itemId,
+    required String ownerUserId,
+    required String requesterUserId,
+    required String requesterEmail,
+    required String message,
+    required List<String> imageUrls,
+  }) async {
+    final existing = await _firestore
+        .collection('requests')
+        .where('itemId', isEqualTo: itemId)
+        .where('requesterUserId', isEqualTo: requesterUserId)
+        .where('status', isEqualTo: 'pending')
+        .get();
+
+    if (existing.docs.isNotEmpty) {
+      throw Exception('У вас уже есть активная заявка на это объявление');
+    }
+
+    await _firestore.collection('requests').add({
+      'itemId': itemId,
+      'ownerUserId': ownerUserId,
+      'requesterUserId': requesterUserId,
+      'requesterEmail': requesterEmail,
+      'message': message,
+      'status': 'pending',
+      'imageUrls': imageUrls,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<List<ItemRequest>> getRequestsForItem(String itemId) async {
+    final snapshot = await _firestore
+        .collection('requests')
+        .where('itemId', isEqualTo: itemId)
+        .orderBy('createdAt', descending: true)
+        .get();
+
+    return snapshot.docs
+        .map((doc) => ItemRequest.fromMap(doc.id, doc.data()))
+        .toList();
+  }
+
+  Future<void> acceptRequest({
+    required String requestId,
+    required String itemId,
+    required String requesterUserId,
+  }) async {
+    final batch = _firestore.batch();
+
+    final requestRef = _firestore.collection('requests').doc(requestId);
+    final itemRef = _firestore.collection('items').doc(itemId);
+
+    batch.update(requestRef, {
+      'status': 'accepted',
+    });
+
+    batch.update(itemRef, {
+      'acceptedHelperId': requesterUserId,
+    });
+
+    final otherRequests = await _firestore
+        .collection('requests')
+        .where('itemId', isEqualTo: itemId)
+        .where('status', isEqualTo: 'pending')
+        .get();
+
+    for (final doc in otherRequests.docs) {
+      if (doc.id != requestId) {
+        batch.update(doc.reference, {
+          'status': 'rejected',
+        });
+      }
+    }
+
+    await batch.commit();
+  }
+
+  Future<void> rejectRequest(String requestId) async {
+    await _firestore.collection('requests').doc(requestId).update({
+      'status': 'rejected',
+    });
+  }
 }

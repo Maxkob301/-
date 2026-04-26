@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+
 import '../models/item_model.dart';
+import '../models/request_model.dart';
 import '../providers/auth_provider.dart';
 import '../providers/item_provider.dart';
+import '../services/cloudinary_service.dart';
 import 'add_edit_screen.dart';
+import 'map_view_screen.dart';
 
 class DetailScreen extends StatefulWidget {
   final LostFoundItem item;
@@ -18,10 +23,27 @@ class _DetailScreenState extends State<DetailScreen> {
   late LostFoundItem currentItem;
   bool _isDeleting = false;
 
+  final ImagePicker _picker = ImagePicker();
+  final CloudinaryService _cloudinaryService = CloudinaryService();
+
   @override
   void initState() {
     super.initState();
     currentItem = widget.item;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadRequestsIfNeeded();
+    });
+  }
+
+  Future<void> _loadRequestsIfNeeded() async {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final isOwner = authProvider.user?.uid == currentItem.userId;
+
+    if (isOwner || authProvider.isAdmin) {
+      await Provider.of<ItemProvider>(context, listen: false)
+          .loadRequestsForItem(currentItem.id);
+    }
   }
 
   Future<void> _resolveItem() async {
@@ -34,9 +56,7 @@ class _DetailScreenState extends State<DetailScreen> {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Объявление отмечено как решённое'),
-        ),
+        const SnackBar(content: Text('Объявление отмечено как решённое')),
       );
 
       Navigator.pop(context, true);
@@ -44,124 +64,8 @@ class _DetailScreenState extends State<DetailScreen> {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Ошибка при завершении объявления: $e'),
-        ),
+        SnackBar(content: Text('Ошибка при завершении объявления: $e')),
       );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final authProvider = Provider.of<AuthProvider>(context);
-    final isOwner = authProvider.user?.uid == currentItem.userId;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(currentItem.title),
-        actions: [
-          if ((isOwner || authProvider.isAdmin) && currentItem.status == 'active')
-            IconButton(
-              icon: const Icon(Icons.edit, color: Colors.white),
-              onPressed: _openEditScreen,
-            ),
-          if ((isOwner || authProvider.isAdmin) && currentItem.status == 'active')
-            IconButton(
-              icon: const Icon(Icons.delete, color: Colors.white),
-              onPressed: _isDeleting ? null : _showDeleteDialog,
-            ),
-          if ((isOwner || authProvider.isAdmin) && currentItem.status == 'active')
-            IconButton(
-              icon: const Icon(Icons.check_circle, color: Colors.white),
-              onPressed: _resolveItem,
-            ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (currentItem.imageUrl != null && currentItem.imageUrl!.isNotEmpty)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Image.network(
-                  currentItem.imageUrl!,
-                  height: 250,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      height: 250,
-                      width: double.infinity,
-                      color: Colors.grey.shade200,
-                      alignment: Alignment.center,
-                      child: const Text('Не удалось загрузить изображение'),
-                    );
-                  },
-                ),
-              ),
-            const SizedBox(height: 16),
-            Chip(
-              label: Text(
-                currentItem.type == 'lost' ? 'Потеряно' : 'Найдено',
-                style: const TextStyle(color: Colors.white),
-              ),
-              backgroundColor:
-                  currentItem.type == 'lost' ? Colors.black : Colors.grey,
-            ),
-            const SizedBox(height: 16),
-            _buildSection('Описание:', currentItem.description),
-            _buildSection('Место:', currentItem.location),
-            _buildSection('Категория:', currentItem.category),
-            _buildSection('Район:', currentItem.district),
-            _buildSection(
-              'Автор:',
-              currentItem.authorEmail.isEmpty
-                  ? 'Не указан'
-                  : currentItem.authorEmail,
-            ),
-            _buildSection('Статус:', _getStatusText(currentItem.status)),
-            _buildSection(
-              'Дата:',
-              '${currentItem.date.day}.${currentItem.date.month}.${currentItem.date.year}',
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSection(String title, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: const TextStyle(fontSize: 16),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _getStatusText(String status) {
-    switch (status) {
-      case 'active':
-        return 'Активно';
-      case 'resolved':
-        return 'Решено';
-      case 'deleted':
-        return 'Удалено';
-      default:
-        return status;
     }
   }
 
@@ -240,5 +144,552 @@ class _DetailScreenState extends State<DetailScreen> {
         setState(() => _isDeleting = false);
       }
     }
+  }
+
+  Future<void> _showRequestDialog() async {
+    final controller = TextEditingController();
+    final List<XFile> selectedImages = [];
+    bool isUploading = false;
+
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      barrierDismissible: !isUploading,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            Future<void> pickImages() async {
+              if (selectedImages.length >= 3) {
+                ScaffoldMessenger.of(dialogContext).showSnackBar(
+                  const SnackBar(
+                    content: Text('Можно прикрепить не больше 3 фото'),
+                  ),
+                );
+                return;
+              }
+
+              final images = await _picker.pickMultiImage();
+
+              if (images.isEmpty) return;
+
+              final freeSlots = 3 - selectedImages.length;
+              selectedImages.addAll(images.take(freeSlots));
+
+              setDialogState(() {});
+            }
+
+            return AlertDialog(
+              title: const Text('Отклик на объявление'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: controller,
+                      maxLines: 3,
+                      decoration: const InputDecoration(
+                        hintText: 'Напишите короткое сообщение владельцу',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: isUploading ? null : pickImages,
+                        icon: const Icon(Icons.photo),
+                        label: Text(
+                          selectedImages.isEmpty
+                              ? 'Прикрепить фото'
+                              : 'Фото выбрано: ${selectedImages.length}/3',
+                        ),
+                      ),
+                    ),
+                    if (selectedImages.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: selectedImages.map((image) {
+                          final index = selectedImages.indexOf(image);
+
+                          return Chip(
+                            label: Text('Фото ${index + 1}'),
+                            deleteIcon: const Icon(Icons.close),
+                            onDeleted: isUploading
+                                ? null
+                                : () {
+                                    selectedImages.removeAt(index);
+                                    setDialogState(() {});
+                                  },
+                          );
+                        }).toList(),
+                      ),
+                    ],
+                    if (isUploading) ...[
+                      const SizedBox(height: 12),
+                      const CircularProgressIndicator(),
+                      const SizedBox(height: 8),
+                      const Text('Загрузка фото...'),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isUploading
+                      ? null
+                      : () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Отмена'),
+                ),
+                TextButton(
+                  onPressed: isUploading
+                      ? null
+                      : () async {
+                          final text = controller.text.trim();
+
+                          if (text.isEmpty) {
+                            ScaffoldMessenger.of(dialogContext).showSnackBar(
+                              const SnackBar(
+                                content:
+                                    Text('Введите сообщение перед отправкой'),
+                              ),
+                            );
+                            return;
+                          }
+
+                          setDialogState(() {
+                            isUploading = true;
+                          });
+
+                          try {
+                            final imageUrls = await _cloudinaryService
+                                .uploadImages(selectedImages);
+
+                            if (!dialogContext.mounted) return;
+
+                            Navigator.of(dialogContext).pop({
+                              'message': text,
+                              'imageUrls': imageUrls,
+                            });
+                          } catch (e) {
+                            setDialogState(() {
+                              isUploading = false;
+                            });
+
+                            ScaffoldMessenger.of(dialogContext).showSnackBar(
+                              SnackBar(
+                                content: Text('Ошибка загрузки фото: $e'),
+                              ),
+                            );
+                          }
+                        },
+                  child: const Text('Отправить'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (!mounted || result == null) return;
+
+    final message = result['message'] as String? ?? '';
+    final imageUrls = (result['imageUrls'] as List<dynamic>? ?? [])
+        .map((url) => url.toString())
+        .toList();
+
+    if (message.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Введите сообщение для владельца')),
+      );
+      return;
+    }
+
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final currentUser = authProvider.user;
+    if (currentUser == null) return;
+
+    try {
+      await Provider.of<ItemProvider>(context, listen: false).createRequest(
+        itemId: currentItem.id,
+        ownerUserId: currentItem.userId,
+        requesterUserId: currentUser.uid,
+        requesterEmail: currentUser.email ?? '',
+        message: message,
+        imageUrls: imageUrls,
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Заявка отправлена')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка отправки заявки: $e')),
+      );
+    }
+  }
+
+  Future<void> _acceptRequest(ItemRequest request) async {
+    try {
+      await Provider.of<ItemProvider>(context, listen: false).acceptRequest(
+        requestId: request.id,
+        itemId: currentItem.id,
+        requesterUserId: request.requesterUserId,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        currentItem = LostFoundItem(
+          id: currentItem.id,
+          title: currentItem.title,
+          description: currentItem.description,
+          location: currentItem.location,
+          date: currentItem.date,
+          type: currentItem.type,
+          imageUrl: currentItem.imageUrl,
+          userId: currentItem.userId,
+          status: currentItem.status,
+          createdAt: currentItem.createdAt,
+          authorEmail: currentItem.authorEmail,
+          category: currentItem.category,
+          district: currentItem.district,
+          acceptedHelperId: request.requesterUserId,
+          isLocationHidden: currentItem.isLocationHidden,
+          latitude: currentItem.latitude,
+          longitude: currentItem.longitude,
+          addressText: currentItem.addressText,
+        );
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Заявка принята')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка принятия заявки: $e')),
+      );
+    }
+  }
+
+  Future<void> _rejectRequest(ItemRequest request) async {
+    try {
+      await Provider.of<ItemProvider>(context, listen: false).rejectRequest(
+        requestId: request.id,
+        itemId: currentItem.id,
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Заявка отклонена')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка отклонения заявки: $e')),
+      );
+    }
+  }
+
+  Widget _buildSection(String title, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 16),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRequestImages(List<String> imageUrls) {
+    if (imageUrls.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: imageUrls.map((url) {
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.network(
+              url,
+              width: 80,
+              height: 80,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                return Container(
+                  width: 80,
+                  height: 80,
+                  color: Colors.grey.shade300,
+                  alignment: Alignment.center,
+                  child: const Icon(Icons.broken_image),
+                );
+              },
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  String _getStatusText(String status) {
+    switch (status) {
+      case 'active':
+        return 'Активно';
+      case 'resolved':
+        return 'Решено';
+      case 'deleted':
+        return 'Удалено';
+      default:
+        return status;
+    }
+  }
+
+  String _getRequestStatusText(String status) {
+    switch (status) {
+      case 'pending':
+        return 'Ожидает';
+      case 'accepted':
+        return 'Принята';
+      case 'rejected':
+        return 'Отклонена';
+      default:
+        return status;
+    }
+  }
+
+  Widget _buildRequestsSection() {
+    final authProvider = Provider.of<AuthProvider>(context);
+    final itemProvider = Provider.of<ItemProvider>(context);
+
+    final isOwner = authProvider.user?.uid == currentItem.userId;
+    if (!isOwner && !authProvider.isAdmin) {
+      return const SizedBox.shrink();
+    }
+
+    if (itemProvider.isLoadingRequests) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (itemProvider.requests.isEmpty) {
+      return const Text('Заявок пока нет');
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Заявки',
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 12),
+        ...itemProvider.requests.map((request) {
+          return Card(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: ListTile(
+                title: Text(
+                  request.requesterEmail.isEmpty
+                      ? 'Пользователь'
+                      : request.requesterEmail,
+                ),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(request.message),
+                    const SizedBox(height: 4),
+                    Text('Статус: ${_getRequestStatusText(request.status)}'),
+                    _buildRequestImages(request.imageUrls),
+                  ],
+                ),
+                isThreeLine: true,
+                trailing: request.status == 'pending'
+                    ? Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: () => _rejectRequest(request),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.check),
+                            onPressed: () => _acceptRequest(request),
+                          ),
+                        ],
+                      )
+                    : null,
+              ),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final authProvider = Provider.of<AuthProvider>(context);
+    final currentUser = authProvider.user;
+
+    final isOwner = currentUser?.uid == currentItem.userId;
+
+    final canSeeLocation =
+        authProvider.isAdmin ||
+        currentUser?.uid == currentItem.userId ||
+        currentItem.acceptedHelperId == currentUser?.uid ||
+        currentItem.isLocationHidden == false;
+
+    final canSendRequest =
+        currentUser != null &&
+        currentUser.uid != currentItem.userId &&
+        !authProvider.isAdmin &&
+        currentItem.status == 'active' &&
+        currentItem.acceptedHelperId.isEmpty;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(currentItem.title),
+        actions: [
+          if ((isOwner || authProvider.isAdmin) &&
+              currentItem.status == 'active')
+            IconButton(
+              icon: const Icon(Icons.edit, color: Colors.white),
+              onPressed: _openEditScreen,
+            ),
+          if ((isOwner || authProvider.isAdmin) &&
+              currentItem.status == 'active')
+            IconButton(
+              icon: const Icon(Icons.delete, color: Colors.white),
+              onPressed: _isDeleting ? null : _showDeleteDialog,
+            ),
+          if ((isOwner || authProvider.isAdmin) &&
+              currentItem.status == 'active')
+            IconButton(
+              icon: const Icon(Icons.check_circle, color: Colors.white),
+              onPressed: _resolveItem,
+            ),
+        ],
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (currentItem.imageUrl != null && currentItem.imageUrl!.isNotEmpty)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.network(
+                  currentItem.imageUrl!,
+                  height: 250,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      height: 250,
+                      width: double.infinity,
+                      color: Colors.grey.shade200,
+                      alignment: Alignment.center,
+                      child: const Text('Не удалось загрузить изображение'),
+                    );
+                  },
+                ),
+              ),
+            const SizedBox(height: 16),
+            Chip(
+              label: Text(
+                currentItem.type == 'lost' ? 'Потеряно' : 'Найдено',
+                style: const TextStyle(color: Colors.white),
+              ),
+              backgroundColor:
+                  currentItem.type == 'lost' ? Colors.black : Colors.grey,
+            ),
+            const SizedBox(height: 16),
+            _buildSection('Описание:', currentItem.description),
+            _buildSection(
+              'Район:',
+              canSeeLocation ? currentItem.district : 'Скрыто',
+            ),
+            _buildSection(
+              'Место:',
+              canSeeLocation ? currentItem.location : 'Скрыто',
+            ),
+            _buildSection('Категория:', currentItem.category),
+            _buildSection(
+              'Автор:',
+              currentItem.authorEmail.isEmpty
+                  ? 'Не указан'
+                  : currentItem.authorEmail,
+            ),
+            _buildSection('Статус:', _getStatusText(currentItem.status)),
+            _buildSection(
+              'Дата:',
+              '${currentItem.date.day}.${currentItem.date.month}.${currentItem.date.year}',
+            ),
+            _buildSection(
+              'Адрес:',
+              canSeeLocation
+                  ? (currentItem.addressText.isEmpty
+                      ? 'Не указан'
+                      : currentItem.addressText)
+                  : 'Скрыто',
+            ),
+            if (canSeeLocation &&
+                currentItem.latitude != null &&
+                currentItem.longitude != null) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.map),
+                  label: const Text('Показать на карте'),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => MapViewScreen(
+                          latitude: currentItem.latitude!,
+                          longitude: currentItem.longitude!,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+            if (canSendRequest) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _showRequestDialog,
+                  child: const Text('Откликнуться'),
+                ),
+              ),
+            ],
+            const SizedBox(height: 24),
+            _buildRequestsSection(),
+          ],
+        ),
+      ),
+    );
   }
 }

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/item_model.dart';
 import '../services/firebase_service.dart';
+import '../models/request_model.dart';
 
 class ItemProvider extends ChangeNotifier {
   final FirebaseService _service = FirebaseService();
@@ -11,6 +12,12 @@ class ItemProvider extends ChangeNotifier {
   List<LostFoundItem> _deletedItems = [];
   List<String> _favorites = [];
   List<LostFoundItem> _favoriteItems = [];
+
+  List<ItemRequest> _requests = [];
+  bool _isLoadingRequests = false;
+
+  List<ItemRequest> get requests => List.unmodifiable(_requests);
+  bool get isLoadingRequests => _isLoadingRequests;
 
   bool _isLoading = false;
   bool _isFetchingMore = false;
@@ -212,4 +219,73 @@ class ItemProvider extends ChangeNotifier {
     _notificationSubscription?.cancel();
     super.dispose();
   }
+
+  Future<void> createRequest({
+  required String itemId,
+  required String ownerUserId,
+  required String requesterUserId,
+  required String requesterEmail,
+  required String message,
+  required List<String> imageUrls,
+}) async {
+  try {
+    await _service.createRequest(
+      itemId: itemId,
+      ownerUserId: ownerUserId,
+      requesterUserId: requesterUserId,
+      requesterEmail: requesterEmail,
+      message: message,
+      imageUrls: imageUrls,
+    );
+  } catch (e) {
+    debugPrint('Ошибка создания заявки: $e');
+    rethrow;
+  }
+}
+
+Future<void> loadRequestsForItem(String itemId) async {
+  _isLoadingRequests = true;
+  notifyListeners();
+
+  try {
+    _requests = await _service.getRequestsForItem(itemId);
+  } catch (e) {
+    debugPrint('Ошибка загрузки заявок: $e');
+  } finally {
+    _isLoadingRequests = false;
+    notifyListeners();
+  }
+}
+
+Future<void> acceptRequest({
+  required String requestId,
+  required String itemId,
+  required String requesterUserId,
+}) async {
+  try {
+    await _service.acceptRequest(
+      requestId: requestId,
+      itemId: itemId,
+      requesterUserId: requesterUserId,
+    );
+    await loadRequestsForItem(itemId);
+    await loadInitialItems();
+  } catch (e) {
+    debugPrint('Ошибка принятия заявки: $e');
+    rethrow;
+  }
+}
+
+Future<void> rejectRequest({
+  required String requestId,
+  required String itemId,
+}) async {
+  try {
+    await _service.rejectRequest(requestId);
+    await loadRequestsForItem(itemId);
+  } catch (e) {
+    debugPrint('Ошибка отклонения заявки: $e');
+    rethrow;
+  }
+}
 }

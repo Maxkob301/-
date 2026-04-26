@@ -11,9 +11,18 @@ class LostFoundItem {
   final String userId;
   final String status;
   final DateTime createdAt;
+
   final String authorEmail;
   final String category;
   final String district;
+
+  final String acceptedHelperId;
+  final bool isLocationHidden;
+
+  final double? latitude;
+  final double? longitude;
+  
+  final String addressText;
 
   LostFoundItem({
     required this.id,
@@ -29,6 +38,11 @@ class LostFoundItem {
     required this.authorEmail,
     required this.category,
     required this.district,
+    required this.acceptedHelperId,
+    required this.isLocationHidden,
+    this.latitude,
+    this.longitude,
+    required this.addressText,
   });
 
   Map<String, dynamic> toMap() {
@@ -45,6 +59,11 @@ class LostFoundItem {
       'authorEmail': authorEmail,
       'category': category,
       'district': district,
+      'acceptedHelperId': acceptedHelperId,
+      'isLocationHidden': isLocationHidden,
+      'latitude': latitude,
+      'longitude': longitude,
+      'addressText': addressText,
     };
   }
 
@@ -73,7 +92,12 @@ class LostFoundItem {
               : DateTime.now(),
       authorEmail: map['authorEmail'] as String? ?? '',
       category: map['category'] as String? ?? 'Другое',
-      district: map['district'] as String? ?? 'Не указан',
+      district: map['district'] as String? ?? 'Другой',
+      acceptedHelperId: map['acceptedHelperId'] as String? ?? '',
+      isLocationHidden: map['isLocationHidden'] as bool? ?? true,
+      latitude: (map['latitude'] as num?)?.toDouble(),
+      longitude: (map['longitude'] as num?)?.toDouble(),
+      addressText: map['addressText'] as String? ?? '',
     );
   }
 }
