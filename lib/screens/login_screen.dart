@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../styles/app_styles.dart';
 import 'home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -66,19 +67,28 @@ class _LoginScreenState extends State<LoginScreen> {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Colors.black, Colors.grey],
+            colors: [AppStyles.primaryColor, AppStyles.iconSecondary],
           ),
         ),
         child: Center(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: Card(
+              color: AppStyles.cardColor,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: const BorderSide(color: AppStyles.borderColor),
+              ),
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.search, size: 64, color: Colors.black),
+                    const Icon(
+                      Icons.search,
+                      size: 64,
+                      color: AppStyles.iconColor,
+                    ),
                     const SizedBox(height: 16),
                     const Text(
                       'findBack',
@@ -91,23 +101,28 @@ class _LoginScreenState extends State<LoginScreen> {
                     TextField(
                       controller: _emailController,
                       keyboardType: TextInputType.emailAddress,
-                      decoration: const InputDecoration(
-                        labelText: 'Email',
-                        prefixIcon: Icon(Icons.email),
+                      decoration: AppStyles.inputDecoration('Email').copyWith(
+                        prefixIcon: const Icon(
+                          Icons.email,
+                          color: AppStyles.iconColor,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 16),
                     TextField(
                       controller: _passwordController,
                       obscureText: !_isPasswordVisible,
-                      decoration: InputDecoration(
-                        labelText: 'Пароль',
-                        prefixIcon: const Icon(Icons.lock),
+                      decoration: AppStyles.inputDecoration('Пароль').copyWith(
+                        prefixIcon: const Icon(
+                          Icons.lock,
+                          color: AppStyles.iconColor,
+                        ),
                         suffixIcon: IconButton(
                           icon: Icon(
                             _isPasswordVisible
                                 ? Icons.visibility
                                 : Icons.visibility_off,
+                            color: AppStyles.iconColor,
                           ),
                           onPressed: () {
                             setState(() {
@@ -122,18 +137,22 @@ class _LoginScreenState extends State<LoginScreen> {
                       width: double.infinity,
                       child: ElevatedButton(
                         onPressed: isLoading ? null : _login,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppStyles.primaryColor,
+                          foregroundColor: Colors.white,
+                        ),
                         child: isLoading
                             ? const SizedBox(
                                 height: 20,
                                 width: 20,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  color: Colors.white,
+                                  color: AppStyles.primaryColor,
                                 ),
                               )
                             : const Text(
                                 'Войти',
-                                style: TextStyle(fontSize: 16),
+                                style: AppStyles.buttonText,
                               ),
                       ),
                     ),
@@ -141,11 +160,11 @@ class _LoginScreenState extends State<LoginScreen> {
                     const Text('Тестовые аккаунты:'),
                     const Text(
                       'user@test.com / 123456',
-                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                      style: AppStyles.small,
                     ),
                     const Text(
                       'admin@test.com / 123456',
-                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                      style: AppStyles.small,
                     ),
                   ],
                 ),

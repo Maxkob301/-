@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/item_provider.dart';
+import '../styles/app_styles.dart';
 import 'detail_screen.dart';
 
 class TrashScreen extends StatefulWidget {
@@ -34,10 +35,16 @@ class _TrashScreenState extends State<TrashScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: AppStyles.primaryColor,
+        foregroundColor: Colors.white,
         title: const Text('Корзина'),
       ),
       body: _isLoadingTrash
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(
+              child: CircularProgressIndicator(
+                color: AppStyles.primaryColor,
+              ),
+            )
           : itemProvider.deletedItems.isEmpty
               ? const Center(child: Text('Корзина пуста'))
               : ListView.builder(
@@ -46,6 +53,11 @@ class _TrashScreenState extends State<TrashScreen> {
                     final item = itemProvider.deletedItems[index];
 
                     return Card(
+                      color: AppStyles.cardColor,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: const BorderSide(color: AppStyles.borderColor),
+                      ),
                       margin: const EdgeInsets.symmetric(
                         horizontal: 16,
                         vertical: 8,
@@ -56,8 +68,8 @@ class _TrashScreenState extends State<TrashScreen> {
                               ? Icons.search
                               : Icons.check_circle,
                           color: item.type == 'lost'
-                              ? Colors.black
-                              : Colors.grey,
+                              ? AppStyles.iconColor
+                              : AppStyles.iconSecondary,
                         ),
                         title: Text(item.title),
                         subtitle: Text(
@@ -66,7 +78,7 @@ class _TrashScreenState extends State<TrashScreen> {
                         trailing: IconButton(
                           icon: const Icon(
                             Icons.restore,
-                            color: Colors.black,
+                            color: AppStyles.iconColor,
                           ),
                           onPressed: () async {
                             try {

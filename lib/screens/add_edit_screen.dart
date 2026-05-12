@@ -9,6 +9,7 @@ import '../providers/auth_provider.dart';
 import '../providers/item_provider.dart';
 import '../services/cloudinary_service.dart';
 import '../services/geocoding_service.dart';
+import '../styles/app_styles.dart';
 import 'map_picker_screen.dart';
 
 class AddEditScreen extends StatefulWidget {
@@ -40,13 +41,15 @@ class _AddEditScreenState extends State<AddEditScreen> {
   double? _selectedLatitude;
   double? _selectedLongitude;
 
-  XFile? _selectedImage;
-  String? _currentImageUrl;
+  final List<XFile> _selectedImages = [];
+  List<String> _currentImageUrls = [];
 
   bool _isSaving = false;
   bool _hideLocation = true;
   bool _isLoadingAddress = false;
   bool _isUploadingImage = false;
+
+  static const int _maxImages = 5;
 
   final List<String> _categories = [
     'Документы',
@@ -93,7 +96,7 @@ class _AddEditScreenState extends State<AddEditScreen> {
     _selectedLatitude = widget.item?.latitude;
     _selectedLongitude = widget.item?.longitude;
 
-    _currentImageUrl = widget.item?.imageUrl;
+    _currentImageUrls = widget.item?.imageUrls ?? [];
   }
 
   @override
@@ -161,9 +164,7 @@ class _AddEditScreenState extends State<AddEditScreen> {
     } catch (e) {
       if (!mounted) return;
 
-      setState(() {
-        _isLoadingAddress = false;
-      });
+      setState(() => _isLoadingAddress = false);
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Не удалось получить адрес: $e')),
@@ -171,13 +172,24 @@ class _AddEditScreenState extends State<AddEditScreen> {
     }
   }
 
-  Future<void> _pickImage() async {
-    final image = await _picker.pickImage(source: ImageSource.gallery);
+  Future<void> _pickImages() async {
+    final currentCount = _currentImageUrls.length + _selectedImages.length;
 
-    if (image == null) return;
+    if (currentCount >= _maxImages) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Можно добавить не больше 5 фото')),
+      );
+      return;
+    }
+
+    final images = await _picker.pickMultiImage();
+
+    if (images.isEmpty) return;
+
+    final freeSlots = _maxImages - currentCount;
 
     setState(() {
-      _selectedImage = image;
+      _selectedImages.addAll(images.take(freeSlots));
     });
   }
 
@@ -196,20 +208,26 @@ class _AddEditScreenState extends State<AddEditScreen> {
       final location = _locationController.text.trim();
       final addressText = _addressController.text.trim();
 
-      String? imageUrl = _currentImageUrl;
+      List<String> imageUrls = [..._currentImageUrls];
 
-      if (_selectedImage != null) {
+      if (_selectedImages.isNotEmpty) {
         setState(() => _isUploadingImage = true);
 
-        imageUrl = await _cloudinaryService.uploadImage(_selectedImage!);
+        final uploadedUrls =
+            await _cloudinaryService.uploadImages(_selectedImages);
 
         if (!mounted) return;
 
+        imageUrls.addAll(uploadedUrls);
+
         setState(() {
           _isUploadingImage = false;
-          _currentImageUrl = imageUrl;
+          _currentImageUrls = imageUrls;
+          _selectedImages.clear();
         });
       }
+
+      final mainImageUrl = imageUrls.isNotEmpty ? imageUrls.first : null;
 
       if (widget.item == null) {
         final newItem = LostFoundItem(
@@ -219,7 +237,8 @@ class _AddEditScreenState extends State<AddEditScreen> {
           location: location,
           date: _selectedDate,
           type: _selectedType,
-          imageUrl: imageUrl,
+          imageUrl: mainImageUrl,
+          imageUrls: imageUrls,
           userId: userId,
           status: 'active',
           createdAt: DateTime.now(),
@@ -240,6 +259,7 @@ class _AddEditScreenState extends State<AddEditScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Объявление создано')),
         );
+
         Navigator.pop(context, true);
       } else {
         await itemProvider.updateItem(widget.item!.id, {
@@ -254,7 +274,8 @@ class _AddEditScreenState extends State<AddEditScreen> {
           'latitude': _selectedLatitude,
           'longitude': _selectedLongitude,
           'addressText': addressText,
-          'imageUrl': imageUrl,
+          'imageUrl': mainImageUrl,
+          'imageUrls': imageUrls,
         });
 
         if (!mounted) return;
@@ -262,6 +283,7 @@ class _AddEditScreenState extends State<AddEditScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Изменения сохранены')),
         );
+
         Navigator.pop(context, true);
       }
     } catch (e) {
@@ -284,50 +306,126 @@ class _AddEditScreenState extends State<AddEditScreen> {
     }
   }
 
-  Widget _buildImageBlock() {
-    final hasCurrentImage =
-        _currentImageUrl != null && _currentImageUrl!.isNotEmpty;
+  Widget _buildImagesBlock() {
+    final totalCount = _currentImageUrls.length + _selectedImages.length;
 
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(
           width: double.infinity,
           child: OutlinedButton.icon(
-            onPressed: (_isSaving || _isUploadingImage) ? null : _pickImage,
-            icon: const Icon(Icons.image),
+            onPressed: (_isSaving || _isUploadingImage) ? null : _pickImages,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppStyles.primaryColor,
+            ),
+            icon: const Icon(Icons.image, color: AppStyles.iconColor),
             label: Text(
-              _selectedImage != null || hasCurrentImage
-                  ? 'Фото выбрано'
-                  : 'Добавить фото вещи',
+              totalCount == 0
+                  ? 'Добавить фото вещи'
+                  : 'Фото выбрано: $totalCount/$_maxImages',
             ),
           ),
         ),
-        if (hasCurrentImage) ...[
+        if (_currentImageUrls.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Загруженные фото:',
+              style: AppStyles.subtitle,
+            ),
+          ),
           const SizedBox(height: 8),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image.network(
-              _currentImageUrl!,
-              height: 160,
-              width: double.infinity,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) {
-                return Container(
-                  height: 160,
-                  width: double.infinity,
-                  color: Colors.grey.shade200,
-                  alignment: Alignment.center,
-                  child: const Text('Не удалось загрузить фото'),
+          SizedBox(
+            height: 90,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: _currentImageUrls.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              itemBuilder: (context, index) {
+                final url = _currentImageUrls[index];
+
+                return Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Image.network(
+                        url,
+                        width: 90,
+                        height: 90,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            width: 90,
+                            height: 90,
+                            color: AppStyles.borderColor,
+                            alignment: Alignment.center,
+                            child: const Icon(
+                              Icons.broken_image,
+                              color: AppStyles.iconColor,
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    Positioned(
+                      right: 2,
+                      top: 2,
+                      child: InkWell(
+                        onTap: (_isSaving || _isUploadingImage)
+                            ? null
+                            : () {
+                                setState(() {
+                                  _currentImageUrls.removeAt(index);
+                                });
+                              },
+                        child: Container(
+                          decoration: const BoxDecoration(
+                            color: AppStyles.primaryColor,
+                            shape: BoxShape.circle,
+                          ),
+                          padding: const EdgeInsets.all(4),
+                          child: const Icon(
+                            Icons.close,
+                            color: Colors.white,
+                            size: 14,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 );
               },
             ),
           ),
         ],
-        if (_selectedImage != null) ...[
+        if (_selectedImages.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Text(
+            'Новые фото выбраны: ${_selectedImages.length}. Они загрузятся после сохранения.',
+            style: AppStyles.small,
+          ),
           const SizedBox(height: 8),
-          const Text(
-            'Новое фото выбрано. Оно загрузится после сохранения.',
-            style: TextStyle(fontSize: 13, color: Colors.grey),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: List.generate(_selectedImages.length, (index) {
+              return Chip(
+                label: Text('Новое фото ${index + 1}'),
+                deleteIcon: const Icon(
+                  Icons.close,
+                  color: AppStyles.iconColor,
+                ),
+                onDeleted: (_isSaving || _isUploadingImage)
+                    ? null
+                    : () {
+                        setState(() {
+                          _selectedImages.removeAt(index);
+                        });
+                      },
+              );
+            }),
           ),
         ],
       ],
@@ -343,10 +441,13 @@ class _AddEditScreenState extends State<AddEditScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: AppStyles.primaryColor,
+        foregroundColor: Colors.white,
         title: Text(
           widget.item == null
               ? 'Добавить объявление'
               : 'Редактировать объявление',
+          style: AppStyles.title.copyWith(color: Colors.white),
         ),
       ),
       body: Form(
@@ -357,9 +458,7 @@ class _AddEditScreenState extends State<AddEditScreen> {
             children: [
               TextFormField(
                 controller: _titleController,
-                decoration: const InputDecoration(
-                  labelText: 'Название',
-                ),
+                decoration: AppStyles.inputDecoration('Название'),
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
                     return 'Введите название';
@@ -368,12 +467,9 @@ class _AddEditScreenState extends State<AddEditScreen> {
                 },
               ),
               const SizedBox(height: 16),
-
               TextFormField(
                 controller: _descriptionController,
-                decoration: const InputDecoration(
-                  labelText: 'Описание',
-                ),
+                decoration: AppStyles.inputDecoration('Описание'),
                 maxLines: 3,
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
@@ -383,11 +479,11 @@ class _AddEditScreenState extends State<AddEditScreen> {
                 },
               ),
               const SizedBox(height: 16),
-
               TextFormField(
                 controller: _locationController,
-                decoration: const InputDecoration(
-                  labelText: 'Описание места',
+                decoration: AppStyles.inputDecoration(
+                  'Описание места',
+                ).copyWith(
                   hintText: 'Например: около входа, рядом с аудиторией и т.д.',
                 ),
                 validator: (value) {
@@ -398,17 +494,17 @@ class _AddEditScreenState extends State<AddEditScreen> {
                 },
               ),
               const SizedBox(height: 16),
-
               DropdownButtonFormField<String>(
-                value: _selectedCategory,
-                decoration: const InputDecoration(
-                  labelText: 'Категория',
-                ),
+                initialValue: _selectedCategory,
+                decoration: AppStyles.inputDecoration('Категория'),
                 items: _categories
                     .map(
                       (category) => DropdownMenuItem<String>(
                         value: category,
-                        child: Text(category),
+                        child: Text(
+                          category,
+                          style: AppStyles.body,
+                        ),
                       ),
                     )
                     .toList(),
@@ -421,17 +517,17 @@ class _AddEditScreenState extends State<AddEditScreen> {
                       },
               ),
               const SizedBox(height: 16),
-
               DropdownButtonFormField<String>(
-                value: _selectedDistrict,
-                decoration: const InputDecoration(
-                  labelText: 'Район',
-                ),
+                initialValue: _selectedDistrict,
+                decoration: AppStyles.inputDecoration('Район'),
                 items: _districts
                     .map(
                       (district) => DropdownMenuItem<String>(
                         value: district,
-                        child: Text(district),
+                        child: Text(
+                          district,
+                          style: AppStyles.body,
+                        ),
                       ),
                     )
                     .toList(),
@@ -444,17 +540,18 @@ class _AddEditScreenState extends State<AddEditScreen> {
                       },
               ),
               const SizedBox(height: 8),
-
               CheckboxListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text(
                   'Скрыть район, адрес и точную локацию до принятия заявки',
+                  style: AppStyles.subtitle,
                 ),
                 subtitle: const Text(
                   'Другие пользователи увидят эти данные только после одобрения отклика',
+                  style: AppStyles.small,
                 ),
                 value: _hideLocation,
-                activeColor: Colors.black,
+                activeColor: AppStyles.primaryColor,
                 onChanged: isBusy
                     ? null
                     : (value) {
@@ -464,12 +561,14 @@ class _AddEditScreenState extends State<AddEditScreen> {
                       },
               ),
               const SizedBox(height: 16),
-
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
                   onPressed: isBusy || _isLoadingAddress ? null : _openMapPicker,
-                  icon: const Icon(Icons.map),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppStyles.primaryColor,
+                  ),
+                  icon: const Icon(Icons.map, color: AppStyles.iconColor),
                   label: Text(
                     _selectedLatitude != null && _selectedLongitude != null
                         ? 'Точка на карте выбрана'
@@ -477,23 +576,21 @@ class _AddEditScreenState extends State<AddEditScreen> {
                   ),
                 ),
               ),
-
               if (_selectedLatitude != null && _selectedLongitude != null) ...[
                 const SizedBox(height: 8),
                 Text(
                   'Координаты: ${_selectedLatitude!.toStringAsFixed(5)}, '
                   '${_selectedLongitude!.toStringAsFixed(5)}',
-                  style: const TextStyle(fontSize: 13, color: Colors.grey),
+                  style: AppStyles.small,
                 ),
               ],
-
               const SizedBox(height: 16),
-
               TextFormField(
                 controller: _addressController,
                 readOnly: true,
-                decoration: InputDecoration(
-                  labelText: 'Адрес по карте',
+                decoration: AppStyles.inputDecoration(
+                  'Адрес по карте',
+                ).copyWith(
                   hintText: 'Появится после выбора точки',
                   suffixIcon: _isLoadingAddress
                       ? const Padding(
@@ -501,46 +598,51 @@ class _AddEditScreenState extends State<AddEditScreen> {
                           child: SizedBox(
                             width: 18,
                             height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppStyles.primaryColor,
+                            ),
                           ),
                         )
-                      : const Icon(Icons.place),
+                      : const Icon(
+                          Icons.place,
+                          color: AppStyles.iconColor,
+                        ),
                 ),
               ),
-
               const SizedBox(height: 16),
-
-              _buildImageBlock(),
-
+              _buildImagesBlock(),
               const SizedBox(height: 16),
-
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 title: Text(
                   'Дата: ${_selectedDate.day}.${_selectedDate.month}.${_selectedDate.year}',
                 ),
-                trailing: const Icon(Icons.calendar_today),
+                trailing: const Icon(
+                  Icons.calendar_today,
+                  color: AppStyles.iconColor,
+                ),
                 onTap: isBusy ? null : _pickDate,
               ),
-
               const SizedBox(height: 16),
-
               const Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
                   'Тип объявления:',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+                  style: AppStyles.subtitle,
                 ),
               ),
-
               Row(
                 children: [
                   Expanded(
                     child: RadioListTile<String>(
-                      title: const Text('Потеряно'),
+                      title: const Text(
+                        'Потеряно',
+                        style: AppStyles.body,
+                      ),
                       value: 'lost',
                       groupValue: _selectedType,
-                      activeColor: Colors.black,
+                      activeColor: AppStyles.primaryColor,
                       onChanged: isBusy
                           ? null
                           : (value) {
@@ -552,10 +654,13 @@ class _AddEditScreenState extends State<AddEditScreen> {
                   ),
                   Expanded(
                     child: RadioListTile<String>(
-                      title: const Text('Найдено'),
+                      title: const Text(
+                        'Найдено',
+                        style: AppStyles.body,
+                      ),
                       value: 'found',
                       groupValue: _selectedType,
-                      activeColor: Colors.black,
+                      activeColor: AppStyles.primaryColor,
                       onChanged: isBusy
                           ? null
                           : (value) {
@@ -567,24 +672,30 @@ class _AddEditScreenState extends State<AddEditScreen> {
                   ),
                 ],
               ),
-
               const SizedBox(height: 24),
-
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed:
-                      (isBusy || currentUser == null) ? null : () => _save(currentUser.uid),
+                  onPressed: (isBusy || currentUser == null)
+                      ? null
+                      : () => _save(currentUser.uid),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppStyles.primaryColor,
+                    foregroundColor: Colors.white,
+                  ),
                   child: isBusy
                       ? const SizedBox(
                           height: 20,
                           width: 20,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            color: Colors.white,
+                            color: AppStyles.primaryColor,
                           ),
                         )
-                      : Text(widget.item == null ? 'Создать' : 'Сохранить'),
+                      : Text(
+                          widget.item == null ? 'Создать' : 'Сохранить',
+                          style: AppStyles.buttonText,
+                        ),
                 ),
               ),
             ],

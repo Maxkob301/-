@@ -7,6 +7,7 @@ import '../models/request_model.dart';
 import '../providers/auth_provider.dart';
 import '../providers/item_provider.dart';
 import '../services/cloudinary_service.dart';
+import '../styles/app_styles.dart';
 import 'add_edit_screen.dart';
 import 'map_view_screen.dart';
 
@@ -25,6 +26,7 @@ class _DetailScreenState extends State<DetailScreen> {
 
   final ImagePicker _picker = ImagePicker();
   final CloudinaryService _cloudinaryService = CloudinaryService();
+  int _selectedImageIndex = 0;
 
   @override
   void initState() {
@@ -103,13 +105,19 @@ class _DetailScreenState extends State<DetailScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
+            style: TextButton.styleFrom(
+              foregroundColor: AppStyles.primaryColor,
+            ),
             child: const Text('Отмена'),
           ),
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: TextButton.styleFrom(
+              foregroundColor: AppStyles.primaryColor,
+            ),
             child: const Text(
               'Удалить',
-              style: TextStyle(color: Colors.black),
+              style: TextStyle(color: AppStyles.primaryColor),
             ),
           ),
         ],
@@ -186,7 +194,9 @@ class _DetailScreenState extends State<DetailScreen> {
                     TextField(
                       controller: controller,
                       maxLines: 3,
-                      decoration: const InputDecoration(
+                      decoration: AppStyles.inputDecoration(
+                        'Сообщение',
+                      ).copyWith(
                         hintText: 'Напишите короткое сообщение владельцу',
                       ),
                     ),
@@ -195,7 +205,13 @@ class _DetailScreenState extends State<DetailScreen> {
                       width: double.infinity,
                       child: OutlinedButton.icon(
                         onPressed: isUploading ? null : pickImages,
-                        icon: const Icon(Icons.photo),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppStyles.primaryColor,
+                        ),
+                        icon: const Icon(
+                          Icons.photo,
+                          color: AppStyles.iconColor,
+                        ),
                         label: Text(
                           selectedImages.isEmpty
                               ? 'Прикрепить фото'
@@ -213,7 +229,10 @@ class _DetailScreenState extends State<DetailScreen> {
 
                           return Chip(
                             label: Text('Фото ${index + 1}'),
-                            deleteIcon: const Icon(Icons.close),
+                            deleteIcon: const Icon(
+                              Icons.close,
+                              color: AppStyles.iconColor,
+                            ),
                             onDeleted: isUploading
                                 ? null
                                 : () {
@@ -226,7 +245,9 @@ class _DetailScreenState extends State<DetailScreen> {
                     ],
                     if (isUploading) ...[
                       const SizedBox(height: 12),
-                      const CircularProgressIndicator(),
+                      const CircularProgressIndicator(
+                        color: AppStyles.primaryColor,
+                      ),
                       const SizedBox(height: 8),
                       const Text('Загрузка фото...'),
                     ],
@@ -238,6 +259,9 @@ class _DetailScreenState extends State<DetailScreen> {
                   onPressed: isUploading
                       ? null
                       : () => Navigator.of(dialogContext).pop(),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppStyles.primaryColor,
+                  ),
                   child: const Text('Отмена'),
                 ),
                 TextButton(
@@ -282,6 +306,9 @@ class _DetailScreenState extends State<DetailScreen> {
                             );
                           }
                         },
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppStyles.primaryColor,
+                  ),
                   child: const Text('Отправить'),
                 ),
               ],
@@ -352,6 +379,7 @@ class _DetailScreenState extends State<DetailScreen> {
           date: currentItem.date,
           type: currentItem.type,
           imageUrl: currentItem.imageUrl,
+          imageUrls: currentItem.imageUrls,
           userId: currentItem.userId,
           status: currentItem.status,
           createdAt: currentItem.createdAt,
@@ -407,12 +435,12 @@ class _DetailScreenState extends State<DetailScreen> {
         children: [
           Text(
             title,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            style: AppStyles.subtitle.copyWith(fontSize: 18),
           ),
           const SizedBox(height: 8),
           Text(
             value,
-            style: const TextStyle(fontSize: 16),
+            style: AppStyles.body.copyWith(fontSize: 16),
           ),
         ],
       ),
@@ -439,9 +467,12 @@ class _DetailScreenState extends State<DetailScreen> {
                 return Container(
                   width: 80,
                   height: 80,
-                  color: Colors.grey.shade300,
+                  color: AppStyles.borderColor,
                   alignment: Alignment.center,
-                  child: const Icon(Icons.broken_image),
+                  child: const Icon(
+                    Icons.broken_image,
+                    color: AppStyles.iconColor,
+                  ),
                 );
               },
             ),
@@ -477,6 +508,23 @@ class _DetailScreenState extends State<DetailScreen> {
     }
   }
 
+  void _openImageViewer(String imageUrl) {
+  showDialog(
+    context: context,
+    builder: (_) => GestureDetector(
+      onTap: () => Navigator.pop(context),
+      child: Container(
+        color: AppStyles.primaryColor,
+        child: Center(
+          child: InteractiveViewer(
+            child: Image.network(imageUrl),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
   Widget _buildRequestsSection() {
     final authProvider = Provider.of<AuthProvider>(context);
     final itemProvider = Provider.of<ItemProvider>(context);
@@ -487,7 +535,11 @@ class _DetailScreenState extends State<DetailScreen> {
     }
 
     if (itemProvider.isLoadingRequests) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(
+        child: CircularProgressIndicator(
+          color: AppStyles.primaryColor,
+        ),
+      );
     }
 
     if (itemProvider.requests.isEmpty) {
@@ -499,11 +551,16 @@ class _DetailScreenState extends State<DetailScreen> {
       children: [
         const Text(
           'Заявки',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          style: AppStyles.title,
         ),
         const SizedBox(height: 12),
         ...itemProvider.requests.map((request) {
           return Card(
+            color: AppStyles.cardColor,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: const BorderSide(color: AppStyles.borderColor),
+            ),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: ListTile(
@@ -527,11 +584,17 @@ class _DetailScreenState extends State<DetailScreen> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           IconButton(
-                            icon: const Icon(Icons.close),
+                            icon: const Icon(
+                              Icons.close,
+                              color: AppStyles.iconColor,
+                            ),
                             onPressed: () => _rejectRequest(request),
                           ),
                           IconButton(
-                            icon: const Icon(Icons.check),
+                            icon: const Icon(
+                              Icons.check,
+                              color: AppStyles.iconColor,
+                            ),
                             onPressed: () => _acceptRequest(request),
                           ),
                         ],
@@ -567,6 +630,8 @@ class _DetailScreenState extends State<DetailScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: AppStyles.primaryColor,
+        foregroundColor: Colors.white,
         title: Text(currentItem.title),
         actions: [
           if ((isOwner || authProvider.isAdmin) &&
@@ -594,25 +659,69 @@ class _DetailScreenState extends State<DetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (currentItem.imageUrl != null && currentItem.imageUrl!.isNotEmpty)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Image.network(
-                  currentItem.imageUrl!,
-                  height: 250,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      height: 250,
-                      width: double.infinity,
-                      color: Colors.grey.shade200,
-                      alignment: Alignment.center,
-                      child: const Text('Не удалось загрузить изображение'),
-                    );
-                  },
-                ),
+            if (currentItem.imageUrls.isNotEmpty) ...[
+  GestureDetector(
+    onTap: () => _openImageViewer(currentItem.imageUrls[_selectedImageIndex]),
+    child: ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        height: 250,
+        width: double.infinity,
+        color: AppStyles.primaryColor,
+        child: Image.network(
+          currentItem.imageUrls[_selectedImageIndex],
+          fit: BoxFit.contain,
+        ),
+      ),
+    ),
+  ),
+
+  const SizedBox(height: 8),
+
+  SizedBox(
+    height: 70,
+    child: ListView.separated(
+      scrollDirection: Axis.horizontal,
+      itemCount: currentItem.imageUrls.length,
+      separatorBuilder: (_, __) => const SizedBox(width: 8),
+      itemBuilder: (context, index) {
+        final url = currentItem.imageUrls[index];
+
+        final isSelected = index == _selectedImageIndex;
+
+        return GestureDetector(
+          onTap: () {
+            setState(() {
+              _selectedImageIndex = index;
+            });
+          },
+          child: Container(
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: isSelected
+                    ? AppStyles.primaryColor
+                    : Colors.transparent,
+                width: 2,
               ),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: Image.network(
+                url,
+                width: 70,
+                height: 70,
+                fit: BoxFit.cover,
+              ),
+            ),
+          ),
+        );
+      },
+    ),
+  ),
+  const SizedBox(height: 16),
+],
+
             const SizedBox(height: 16),
             Chip(
               label: Text(
@@ -620,7 +729,9 @@ class _DetailScreenState extends State<DetailScreen> {
                 style: const TextStyle(color: Colors.white),
               ),
               backgroundColor:
-                  currentItem.type == 'lost' ? Colors.black : Colors.grey,
+                  currentItem.type == 'lost'
+                      ? AppStyles.primaryColor
+                      : AppStyles.iconSecondary,
             ),
             const SizedBox(height: 16),
             _buildSection('Описание:', currentItem.description),
@@ -659,7 +770,10 @@ class _DetailScreenState extends State<DetailScreen> {
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
-                  icon: const Icon(Icons.map),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppStyles.primaryColor,
+                  ),
+                  icon: const Icon(Icons.map, color: AppStyles.iconColor),
                   label: const Text('Показать на карте'),
                   onPressed: () {
                     Navigator.push(
@@ -681,6 +795,10 @@ class _DetailScreenState extends State<DetailScreen> {
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: _showRequestDialog,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppStyles.primaryColor,
+                    foregroundColor: Colors.white,
+                  ),
                   child: const Text('Откликнуться'),
                 ),
               ),

@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/item_model.dart';
+import '../models/notification_model.dart';
 import '../models/request_model.dart';
 
 class FirebaseService {
@@ -62,32 +63,47 @@ class FirebaseService {
   }
 
   Future<void> addItem(LostFoundItem item, String userId) async {
-    final docRef = await _firestore.collection('items').add({
+    final docRef = _firestore.collection('items').doc();
+
+    await docRef.set({
+      'id': docRef.id,
       'title': item.title,
       'description': item.description,
       'location': item.location,
       'date': Timestamp.fromDate(item.date),
       'type': item.type,
-      'imageUrl': item.imageUrl,
+      'imageUrl':
+          item.imageUrls.isNotEmpty ? item.imageUrls.first : item.imageUrl,
+      'imageUrls': item.imageUrls,
       'userId': userId,
       'status': 'active',
       'createdAt': FieldValue.serverTimestamp(),
       'authorEmail': item.authorEmail,
       'category': item.category,
       'district': item.district,
-      'acceptedHelperId':'',
+      'acceptedHelperId': '',
       'isLocationHidden': item.isLocationHidden,
       'latitude': item.latitude,
       'longitude': item.longitude,
       'addressText': item.addressText,
     });
 
-    await _firestore.collection('notifications').add({
-      'message': 'Новое объявление: ${item.title}',
-      'read': false,
-      'createdAt': FieldValue.serverTimestamp(),
-      'itemId': docRef.id,
-    });
+    final userRole = await getUserRole(userId);
+    if (userRole != 'admin') {
+      await _firestore.collection('notifications').add({
+        'title': 'Новое объявление',
+        'message':
+            'Пользователь ${item.authorEmail} добавил объявление "${item.title}"',
+        'itemId': docRef.id,
+        'itemTitle': item.title,
+        'fromUserId': userId,
+        'fromUserEmail': item.authorEmail,
+        'targetRole': 'admin',
+        'targetUserId': '',
+        'isRead': false,
+        'createdAt': Timestamp.now(),
+      });
+    }
   }
 
   Future<void> updateItem(String docId, Map<String, dynamic> data) async {
@@ -128,12 +144,48 @@ class FirebaseService {
     return favorites.cast<String>();
   }
 
-  Stream<QuerySnapshot<Map<String, dynamic>>> getUnreadNotifications() {
+  Stream<QuerySnapshot<Map<String, dynamic>>> getUnreadNotifications(
+    String adminUserId,
+  ) {
     return _firestore
         .collection('notifications')
-        .where('read', isEqualTo: false)
-        .orderBy('createdAt', descending: true)
+        .where('targetRole', isEqualTo: 'admin')
+        .where('isRead', isEqualTo: false)
         .snapshots();
+  }
+
+  Future<List<AppNotification>> getNotifications(String adminUserId) async {
+    final snapshot = await _firestore
+        .collection('notifications')
+        .where('targetRole', isEqualTo: 'admin')
+        .get();
+
+    final notifications = snapshot.docs
+        .map((doc) => AppNotification.fromMap(doc.id, doc.data()))
+        .where(
+          (notification) =>
+              notification.targetUserId.isEmpty ||
+              notification.targetUserId == adminUserId,
+        )
+        .toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+    return notifications;
+  }
+
+  Future<void> markNotificationAsRead(String notificationId) async {
+    await _firestore.collection('notifications').doc(notificationId).update({
+      'isRead': true,
+    });
+  }
+
+  Future<LostFoundItem?> getItemById(String itemId) async {
+    final doc = await _firestore.collection('items').doc(itemId).get();
+    final data = doc.data();
+
+    if (!doc.exists || data == null) return null;
+
+    return LostFoundItem.fromMap(doc.id, data);
   }
 
   Future<List<LostFoundItem>> getDeletedItems() async {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import '../styles/app_styles.dart';
 
 class MapViewScreen extends StatelessWidget {
   final double latitude;
@@ -18,6 +19,8 @@ class MapViewScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: AppStyles.primaryColor,
+        foregroundColor: Colors.white,
         title: const Text('Место на карте'),
       ),
       body: FlutterMap(
@@ -40,7 +43,7 @@ class MapViewScreen extends StatelessWidget {
                 child: const Icon(
                   Icons.location_pin,
                   size: 42,
-                  color: Colors.black,
+                  color: AppStyles.iconColor,
                 ),
               ),
             ],

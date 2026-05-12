@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import '../styles/app_styles.dart';
 
 class MapPickerScreen extends StatefulWidget {
   final double? initialLatitude;
@@ -40,6 +41,8 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: AppStyles.primaryColor,
+        foregroundColor: Colors.white,
         title: const Text('Выбор места на карте'),
       ),
       body: Column(
@@ -72,7 +75,7 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
                         child: const Icon(
                           Icons.location_pin,
                           size: 42,
-                          color: Colors.black,
+                          color: AppStyles.iconColor,
                         ),
                       ),
                     ],
@@ -84,9 +87,9 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
             width: double.infinity,
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: AppStyles.backgroundColor,
               border: Border(
-                top: BorderSide(color: Colors.grey.shade300),
+                top: BorderSide(color: AppStyles.borderColor),
               ),
             ),
             child: Column(
@@ -97,7 +100,7 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
                       ? 'Точка не выбрана'
                       : 'Широта: ${_selectedPoint!.latitude.toStringAsFixed(6)}\n'
                           'Долгота: ${_selectedPoint!.longitude.toStringAsFixed(6)}',
-                  style: const TextStyle(fontSize: 14),
+                  style: AppStyles.body,
                 ),
                 const SizedBox(height: 12),
                 SizedBox(
@@ -106,6 +109,10 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
                     onPressed: _selectedPoint == null
                         ? null
                         : () => Navigator.pop(context, _selectedPoint),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppStyles.primaryColor,
+                      foregroundColor: Colors.white,
+                    ),
                     child: const Text('Подтвердить точку'),
                   ),
                 ),

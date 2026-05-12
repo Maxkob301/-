@@ -7,7 +7,13 @@ class LostFoundItem {
   final String location;
   final DateTime date;
   final String type;
+
+  
   final String? imageUrl;
+
+  
+  final List<String> imageUrls;
+
   final String userId;
   final String status;
   final DateTime createdAt;
@@ -21,7 +27,7 @@ class LostFoundItem {
 
   final double? latitude;
   final double? longitude;
-  
+
   final String addressText;
 
   LostFoundItem({
@@ -32,6 +38,7 @@ class LostFoundItem {
     required this.date,
     required this.type,
     this.imageUrl,
+    required this.imageUrls,
     required this.userId,
     required this.status,
     required this.createdAt,
@@ -52,7 +59,8 @@ class LostFoundItem {
       'location': location,
       'date': Timestamp.fromDate(date),
       'type': type,
-      'imageUrl': imageUrl,
+      'imageUrl': imageUrls.isNotEmpty ? imageUrls.first : imageUrl,
+      'imageUrls': imageUrls,
       'userId': userId,
       'status': status,
       'createdAt': Timestamp.fromDate(createdAt),
@@ -71,6 +79,20 @@ class LostFoundItem {
     final dateValue = map['date'];
     final createdAtValue = map['createdAt'];
 
+    final List<String> parsedImageUrls =
+        (map['imageUrls'] as List<dynamic>? ?? [])
+            .map((url) => url.toString())
+            .where((url) => url.isNotEmpty)
+            .toList();
+
+    final String? oldImageUrl = map['imageUrl'] as String?;
+
+    final List<String> finalImageUrls = parsedImageUrls.isNotEmpty
+        ? parsedImageUrls
+        : oldImageUrl != null && oldImageUrl.isNotEmpty
+            ? [oldImageUrl]
+            : [];
+
     return LostFoundItem(
       id: id,
       title: map['title'] as String? ?? '',
@@ -82,7 +104,8 @@ class LostFoundItem {
               ? DateTime.tryParse(dateValue) ?? DateTime.now()
               : DateTime.now(),
       type: map['type'] as String? ?? 'lost',
-      imageUrl: map['imageUrl'] as String?,
+      imageUrl: finalImageUrls.isNotEmpty ? finalImageUrls.first : oldImageUrl,
+      imageUrls: finalImageUrls,
       userId: map['userId'] as String? ?? '',
       status: map['status'] as String? ?? 'active',
       createdAt: createdAtValue is Timestamp

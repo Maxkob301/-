@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../styles/app_styles.dart';
 import 'login_screen.dart';
 import 'home_screen.dart';
 
@@ -73,7 +74,7 @@ class _SplashScreenState extends State<SplashScreen>
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Colors.black, Colors.grey],
+            colors: [AppStyles.primaryColor, AppStyles.iconSecondary],
           ),
         ),
         child: Center(
@@ -95,7 +96,7 @@ class _SplashScreenState extends State<SplashScreen>
                     ),
                   ),
                   SizedBox(height: 20),
-                  CircularProgressIndicator(color: Colors.white),
+                  CircularProgressIndicator(color: AppStyles.primaryColor),
                 ],
               ),
             ),

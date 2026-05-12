@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/item_model.dart';
+import '../models/notification_model.dart';
 import '../services/firebase_service.dart';
 import '../models/request_model.dart';
 
@@ -12,6 +13,7 @@ class ItemProvider extends ChangeNotifier {
   List<LostFoundItem> _deletedItems = [];
   List<String> _favorites = [];
   List<LostFoundItem> _favoriteItems = [];
+  List<AppNotification> _notifications = [];
 
   List<ItemRequest> _requests = [];
   bool _isLoadingRequests = false;
@@ -26,12 +28,14 @@ class ItemProvider extends ChangeNotifier {
   DocumentSnapshot<Map<String, dynamic>>? _lastDocument;
   int _notificationCount = 0;
 
-  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _notificationSubscription;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
+      _notificationSubscription;
 
   List<LostFoundItem> get items => List.unmodifiable(_items);
   List<LostFoundItem> get deletedItems => List.unmodifiable(_deletedItems);
   List<String> get favorites => List.unmodifiable(_favorites);
   List<LostFoundItem> get favoriteItems => List.unmodifiable(_favoriteItems);
+  List<AppNotification> get notifications => List.unmodifiable(_notifications);
 
   bool get isLoading => _isLoading;
   bool get isFetchingMore => _isFetchingMore;
@@ -101,16 +105,16 @@ class ItemProvider extends ChangeNotifier {
   }
 
   Future<void> resolveItem(String id) async {
-  try {
-    await _service.resolveItem(id);
-    await loadInitialItems();
-    await loadDeletedItems();
-    await refreshFavoriteItemsAfterChange(id);
-  } catch (e) {
-    debugPrint('Ошибка завершения объявления: $e');
-    rethrow;
+    try {
+      await _service.resolveItem(id);
+      await loadInitialItems();
+      await loadDeletedItems();
+      await refreshFavoriteItemsAfterChange(id);
+    } catch (e) {
+      debugPrint('Ошибка завершения объявления: $e');
+      rethrow;
+    }
   }
-}
 
   Future<void> updateItem(String id, Map<String, dynamic> data) async {
     try {
@@ -192,9 +196,8 @@ class ItemProvider extends ChangeNotifier {
   }
 
   Future<void> refreshFavoriteItems() async {
-    _favoriteItems = _favoriteItems
-        .where((item) => item.status == 'active')
-        .toList();
+    _favoriteItems =
+        _favoriteItems.where((item) => item.status == 'active').toList();
     notifyListeners();
   }
 
@@ -204,14 +207,76 @@ class ItemProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void listenToNotifications() {
+  void listenToNotifications(String adminUserId) {
     _notificationSubscription?.cancel();
 
     _notificationSubscription =
-        _service.getUnreadNotifications().listen((snapshot) {
-      _notificationCount = snapshot.docs.length;
+        _service.getUnreadNotifications(adminUserId).listen((snapshot) {
+      _notificationCount = snapshot.docs
+          .map((doc) => AppNotification.fromMap(doc.id, doc.data()))
+          .where(
+            (notification) =>
+                notification.targetUserId.isEmpty ||
+                notification.targetUserId == adminUserId,
+          )
+          .length;
       notifyListeners();
     });
+  }
+
+  Future<void> loadNotifications(String adminUserId) async {
+    try {
+      _notifications = await _service.getNotifications(adminUserId);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Ошибка загрузки уведомлений: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> markNotificationAsRead(String notificationId) async {
+    try {
+      await _service.markNotificationAsRead(notificationId);
+
+      final index = _notifications.indexWhere(
+        (notification) => notification.id == notificationId,
+      );
+
+      if (index != -1) {
+        final notification = _notifications[index];
+        _notifications[index] = AppNotification(
+          id: notification.id,
+          title: notification.title,
+          message: notification.message,
+          itemId: notification.itemId,
+          itemTitle: notification.itemTitle,
+          fromUserId: notification.fromUserId,
+          fromUserEmail: notification.fromUserEmail,
+          targetRole: notification.targetRole,
+          targetUserId: notification.targetUserId,
+          isRead: true,
+          createdAt: notification.createdAt,
+        );
+      }
+
+      if (_notificationCount > 0) {
+        _notificationCount--;
+      }
+
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Ошибка обновления уведомления: $e');
+      rethrow;
+    }
+  }
+
+  Future<LostFoundItem?> getItemById(String itemId) async {
+    try {
+      return _service.getItemById(itemId);
+    } catch (e) {
+      debugPrint('Ошибка загрузки объявления по уведомлению: $e');
+      rethrow;
+    }
   }
 
   @override
@@ -221,71 +286,71 @@ class ItemProvider extends ChangeNotifier {
   }
 
   Future<void> createRequest({
-  required String itemId,
-  required String ownerUserId,
-  required String requesterUserId,
-  required String requesterEmail,
-  required String message,
-  required List<String> imageUrls,
-}) async {
-  try {
-    await _service.createRequest(
-      itemId: itemId,
-      ownerUserId: ownerUserId,
-      requesterUserId: requesterUserId,
-      requesterEmail: requesterEmail,
-      message: message,
-      imageUrls: imageUrls,
-    );
-  } catch (e) {
-    debugPrint('Ошибка создания заявки: $e');
-    rethrow;
+    required String itemId,
+    required String ownerUserId,
+    required String requesterUserId,
+    required String requesterEmail,
+    required String message,
+    required List<String> imageUrls,
+  }) async {
+    try {
+      await _service.createRequest(
+        itemId: itemId,
+        ownerUserId: ownerUserId,
+        requesterUserId: requesterUserId,
+        requesterEmail: requesterEmail,
+        message: message,
+        imageUrls: imageUrls,
+      );
+    } catch (e) {
+      debugPrint('Ошибка создания заявки: $e');
+      rethrow;
+    }
   }
-}
 
-Future<void> loadRequestsForItem(String itemId) async {
-  _isLoadingRequests = true;
-  notifyListeners();
-
-  try {
-    _requests = await _service.getRequestsForItem(itemId);
-  } catch (e) {
-    debugPrint('Ошибка загрузки заявок: $e');
-  } finally {
-    _isLoadingRequests = false;
+  Future<void> loadRequestsForItem(String itemId) async {
+    _isLoadingRequests = true;
     notifyListeners();
-  }
-}
 
-Future<void> acceptRequest({
-  required String requestId,
-  required String itemId,
-  required String requesterUserId,
-}) async {
-  try {
-    await _service.acceptRequest(
-      requestId: requestId,
-      itemId: itemId,
-      requesterUserId: requesterUserId,
-    );
-    await loadRequestsForItem(itemId);
-    await loadInitialItems();
-  } catch (e) {
-    debugPrint('Ошибка принятия заявки: $e');
-    rethrow;
+    try {
+      _requests = await _service.getRequestsForItem(itemId);
+    } catch (e) {
+      debugPrint('Ошибка загрузки заявок: $e');
+    } finally {
+      _isLoadingRequests = false;
+      notifyListeners();
+    }
   }
-}
 
-Future<void> rejectRequest({
-  required String requestId,
-  required String itemId,
-}) async {
-  try {
-    await _service.rejectRequest(requestId);
-    await loadRequestsForItem(itemId);
-  } catch (e) {
-    debugPrint('Ошибка отклонения заявки: $e');
-    rethrow;
+  Future<void> acceptRequest({
+    required String requestId,
+    required String itemId,
+    required String requesterUserId,
+  }) async {
+    try {
+      await _service.acceptRequest(
+        requestId: requestId,
+        itemId: itemId,
+        requesterUserId: requesterUserId,
+      );
+      await loadRequestsForItem(itemId);
+      await loadInitialItems();
+    } catch (e) {
+      debugPrint('Ошибка принятия заявки: $e');
+      rethrow;
+    }
   }
-}
+
+  Future<void> rejectRequest({
+    required String requestId,
+    required String itemId,
+  }) async {
+    try {
+      await _service.rejectRequest(requestId);
+      await loadRequestsForItem(itemId);
+    } catch (e) {
+      debugPrint('Ошибка отклонения заявки: $e');
+      rethrow;
+    }
+  }
 }

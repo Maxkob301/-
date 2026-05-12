@@ -36,25 +36,40 @@ class MyApp extends StatelessWidget {
       child: MaterialApp(
         title: 'findBack',
         debugShowCheckedModeBanner: false,
+
         theme: ThemeData(
+          useMaterial3: false,
+
           brightness: Brightness.light,
           scaffoldBackgroundColor: Colors.white,
-          colorScheme: const ColorScheme.light(
-            primary: Colors.black,
-            secondary: Colors.black,
-          ),
+
+          // 🔥 ЖЁСТКО фиксируем основной цвет
+          primaryColor: Colors.black,
+          primarySwatch: Colors.grey, // важно, чтобы не было синего fallback
+
+          // ❗ УБРАН colorScheme полностью
+
           appBarTheme: const AppBarTheme(
             backgroundColor: Colors.black,
             foregroundColor: Colors.white,
             elevation: 0,
+            iconTheme: IconThemeData(color: Colors.white),
+            titleTextStyle: TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
           ),
+
           iconTheme: const IconThemeData(
             color: Colors.black,
           ),
+
           textTheme: const TextTheme(
             bodyLarge: TextStyle(color: Colors.black),
             bodyMedium: TextStyle(color: Colors.black),
           ),
+
           cardTheme: CardThemeData(
             color: Colors.white,
             elevation: 2,
@@ -63,6 +78,7 @@ class MyApp extends StatelessWidget {
               side: BorderSide(color: Colors.grey.shade300),
             ),
           ),
+
           elevatedButtonTheme: ElevatedButtonThemeData(
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.black,
@@ -73,10 +89,16 @@ class MyApp extends StatelessWidget {
               ),
             ),
           ),
+
           floatingActionButtonTheme: const FloatingActionButtonThemeData(
             backgroundColor: Colors.black,
             foregroundColor: Colors.white,
           ),
+
+          progressIndicatorTheme: const ProgressIndicatorThemeData(
+            color: Colors.black,
+          ),
+
           inputDecorationTheme: InputDecorationTheme(
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
@@ -87,12 +109,13 @@ class MyApp extends StatelessWidget {
             ),
             labelStyle: const TextStyle(color: Colors.black),
           ),
+
           snackBarTheme: const SnackBarThemeData(
             backgroundColor: Colors.black,
             contentTextStyle: TextStyle(color: Colors.white),
           ),
-          useMaterial3: true,
         ),
+
         initialRoute: '/',
         routes: {
           '/': (context) => const SplashScreen(),
