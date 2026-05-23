@@ -21,7 +21,7 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
   final MapController _mapController = MapController();
   LatLng? _selectedPoint;
 
-  static const LatLng _defaultCenter = LatLng(48.2082, 16.3738);
+  static const LatLng _defaultCenter = LatLng(55.7558, 37.6173);
 
   @override
   void initState() {
