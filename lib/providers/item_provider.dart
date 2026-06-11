@@ -58,6 +58,18 @@ class ItemProvider extends ChangeNotifier {
 
       _lastDocument = snapshot.docs.isNotEmpty ? snapshot.docs.last : null;
       _hasMore = snapshot.docs.length == 5;
+
+      debugPrint(
+        'PAGINATION initial: received=${snapshot.docs.length}, '
+        'items=${_items.length}, hasMore=$_hasMore, '
+        'lastDocument=${_lastDocument?.id}',
+      );
+      if (snapshot.docs.length < 5) {
+        debugPrint(
+          'В приложении отображаются только active-объявления, '
+          'остальные скрыты по логике статуса',
+        );
+      }
     } catch (e) {
       debugPrint('Ошибка загрузки объявлений: $e');
     } finally {
@@ -82,6 +94,12 @@ class ItemProvider extends ChangeNotifier {
       _items.addAll(newItems);
       _lastDocument = snapshot.docs.isNotEmpty ? snapshot.docs.last : null;
       _hasMore = snapshot.docs.length == 5;
+
+      debugPrint(
+        'PAGINATION more: received=${snapshot.docs.length}, '
+        'items=${_items.length}, hasMore=$_hasMore, '
+        'lastDocument=${_lastDocument?.id}',
+      );
     } catch (e) {
       debugPrint('Ошибка подгрузки объявлений: $e');
     } finally {
@@ -107,6 +125,8 @@ class ItemProvider extends ChangeNotifier {
   Future<void> resolveItem(String id) async {
     try {
       await _service.resolveItem(id);
+      _items.removeWhere((item) => item.id == id);
+      notifyListeners();
       await loadInitialItems();
       await loadDeletedItems();
       await refreshFavoriteItemsAfterChange(id);
@@ -129,6 +149,8 @@ class ItemProvider extends ChangeNotifier {
   Future<void> deleteItem(String id) async {
     try {
       await _service.deleteItem(id);
+      _items.removeWhere((item) => item.id == id);
+      notifyListeners();
       await loadInitialItems();
       await loadDeletedItems();
       await refreshFavoriteItemsAfterChange(id);
@@ -259,9 +281,7 @@ class ItemProvider extends ChangeNotifier {
         );
       }
 
-      if (_notificationCount > 0) {
-        _notificationCount--;
-      }
+    _notificationCount = _notifications.where((notification) => !notification.isRead).length;
 
       notifyListeners();
     } catch (e) {
